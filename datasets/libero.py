@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 from torch.nn.utils.rnn import pad_sequence
 from datasets.core import TrajectoryDataset
-
+import os
 
 class LiberoGoalDataset(TrajectoryDataset):
     # data structure:
@@ -21,6 +21,8 @@ class LiberoGoalDataset(TrajectoryDataset):
     #              actions.npy
     def __init__(self, data_directory, subset_fraction: Optional[float] = None):
         self.dir = Path(data_directory) / "libero_goal"
+    
+        
         self.task_names = list(self.dir.iterdir())
         self.task_names.sort()
         self.demos = []
@@ -41,10 +43,13 @@ class LiberoGoalDataset(TrajectoryDataset):
         self.states = []
         self.actions = []
         for demo in self.demos:
-            self.joint_pos.append(np.load(demo / "robot0_joint_pos.npy"))
-            self.eef.append(np.load(demo / "robot0_eef.npy"))
-            self.gripper_qpos.append(np.load(demo / "robot0_gripper_pos.npy"))
-            self.object_states.append(np.load(demo / "object_states.npy"))
+            try:
+                self.joint_pos.append(np.load(demo / "robot0_joint_pos.npy"))
+                self.eef.append(np.load(demo / "robot0_eef.npy"))
+                self.gripper_qpos.append(np.load(demo / "robot0_gripper_pos.npy"))
+                self.object_states.append(np.load(demo / "object_states.npy"))
+            except:
+                continue
             state = np.concatenate(
                 [
                     self.joint_pos[-1],

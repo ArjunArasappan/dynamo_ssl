@@ -16,6 +16,7 @@ class PushMultiviewTrajectoryDataset(TrajectoryDataset):
         prefetch: bool = False,
     ):
         self.data_directory = Path(data_directory)
+        print(self.data_directory)
         self.states = np.load(self.data_directory / "multimodal_push_observations.npy")
         self.actions = np.load(self.data_directory / "multimodal_push_actions.npy")
         self.masks = np.load(self.data_directory / "multimodal_push_masks.npy")

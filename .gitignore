@@ -13,3 +13,4 @@ __pycache__
 outputs
 checkpoints
 wandb
+dataset_dir/

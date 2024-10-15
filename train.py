@@ -47,6 +47,12 @@ class Trainer:
         os.chdir(self.work_dir)
         self.work_dir = Path(os.getcwd())  # get the absolute path
 
+        print(self.work_dir)
+        
+        file_path = "/Users/arjunarasappan/Documents/Research Docs/dynamo_ssl/dataset_dir/dynamo_repro_datasets/libero_dataset/libero_goal/push_the_plate_to_the_front_of_the_stove/demo_8/robot0_eef.npy"
+        print("Checking file:", file_path)
+        print("File exists:", os.path.exists(file_path))
+
         self.dataset = hydra.utils.instantiate(cfg.env.dataset)
         self.train_set, self.test_set = self._split_and_slice_dataset(self.dataset)
         self._setup_loaders(batch_size=self.cfg.batch_size)
