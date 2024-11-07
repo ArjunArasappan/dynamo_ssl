@@ -21,7 +21,7 @@ goal_dim: 0
 wandb:
   project: dynamo-repro
   entity: ${env_vars.wandb_entity}
-train_fraction: 0.9
+train_fraction: 0.1
 
 device: cuda
 optim:
@@ -54,6 +54,21 @@ data:
 
 save_every: 10
 save_path: "${env_vars.save_path}/checkpoints/${env.gym.id}/${now:%Y-%m-%d}/${now:%H-%M-%S}"
+
+mrl:
+  min_emb: 8
+
+policy_mlp:
+  _target_: models.policy_mlp.policy_mlp
+  obs_dim: ${encoder.output_dim}
+  act_dim: ${env.act_dim}
+  goal_dim: ${env.goal_dim}
+  views: ${env.views}
+  obs_window_size: ${window_size}
+  act_window_size: ${action_window_size}
+  hidden_dim: 512
+  layers: 64
+
 
 
 

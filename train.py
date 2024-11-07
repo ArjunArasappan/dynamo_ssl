@@ -47,12 +47,6 @@ class Trainer:
         os.chdir(self.work_dir)
         self.work_dir = Path(os.getcwd())  # get the absolute path
 
-        print(self.work_dir)
-        
-        file_path = "/Users/arjunarasappan/Documents/Research Docs/dynamo_ssl/dataset_dir/dynamo_repro_datasets/libero_dataset/libero_goal/push_the_plate_to_the_front_of_the_stove/demo_8/robot0_eef.npy"
-        print("Checking file:", file_path)
-        print("File exists:", os.path.exists(file_path))
-
         self.dataset = hydra.utils.instantiate(cfg.env.dataset)
         self.train_set, self.test_set = self._split_and_slice_dataset(self.dataset)
         self._setup_loaders(batch_size=self.cfg.batch_size)
@@ -78,6 +72,7 @@ class Trainer:
         self.epoch = 0
 
     def _init_tracker(self, cfg):
+
         wandb_cfg = OmegaConf.to_container(cfg, resolve=True)
         wandb_cfg["effective_batch_size"] = self.effective_batch_size
         wandb_cfg["save_path"] = str(self.work_dir)
@@ -116,6 +111,7 @@ class Trainer:
                 self.wandb_run.watch(self.encoder)
 
     def _init_projector(self):
+        print("DEVICE: ", torch.cuda.current_device(), print(torch.cuda.get_device_name(torch.cuda.current_device())))
         if self.projector is None:  # possibly already initialized from snapshot
             self.projector = hydra.utils.instantiate(
                 self.cfg.projector, _recursive_=False

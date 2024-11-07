@@ -1,4 +1,4 @@
-dataset_root: /Users/arjunarasappan/Documents/Research Docs/dynamo_ssl/dataset_dir/  # e.g. set this to the unzipped directory of all datasets
+dataset_root: /home/harsh/arjun/dynamo_repro_datasets/ # e.g. set this to the unzipped directory of all datasets
 
 datasets:
     pusht: ${env_vars.dataset_root}/pusht_dataset
