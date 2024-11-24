@@ -72,7 +72,6 @@ class Trainer:
         self.epoch = 0
 
     def _init_tracker(self, cfg):
-
         wandb_cfg = OmegaConf.to_container(cfg, resolve=True)
         wandb_cfg["effective_batch_size"] = self.effective_batch_size
         wandb_cfg["save_path"] = str(self.work_dir)
@@ -111,7 +110,6 @@ class Trainer:
                 self.wandb_run.watch(self.encoder)
 
     def _init_projector(self):
-        print("DEVICE: ", torch.cuda.current_device(), print(torch.cuda.get_device_name(torch.cuda.current_device())))
         if self.projector is None:  # possibly already initialized from snapshot
             self.projector = hydra.utils.instantiate(
                 self.cfg.projector, _recursive_=False

@@ -1,8 +1,35 @@
 defaults:
   - env_vars: env_vars
-  - encoder: pusht_dynamo
+  - eval_encoder: pusht_dynamo
+  - env: pusht
   - _self_
 
+
+#mrl configs
+mrl:
+  min_size: 3 # 2^3 = 8
+
+
+
+# train params
+train:
+
+  train_fraction: 0.95
+  batch_size: 64
+  num_workers: 15
+  window_size: 5
+  epochs: 500
+
+
+  goal_conditional: null
+  goal_seq_len: 0
+  min_future_sep: 0
+  num_extra_predicted_actions: 0
+  timeout_seconds: 18000
+
+relative: False
+
+subset_fraction: 1
 seed: 42
 window_size: 5
 goal_window_size: 5
@@ -55,26 +82,21 @@ data:
 save_every: 10
 save_path: "${env_vars.save_path}/checkpoints/${env.gym.id}/${now:%Y-%m-%d}/${now:%H-%M-%S}"
 
-mrl:
-  min_emb: 8
-
 policy_mlp:
   _target_: models.policy_mlp.policy_mlp
-  obs_dim: ${encoder.output_dim}
+  obs_dim: ${eval_encoder.output_dim}
   act_dim: ${env.act_dim}
   goal_dim: ${env.goal_dim}
   views: ${env.views}
   obs_window_size: ${window_size}
   act_window_size: ${action_window_size}
-  hidden_dim: 512
-  layers: 64
-
-
+  hidden_dim: 64
+  layers: 4
 
 
 model:
   _target_: models.vq_behavior_transformer.bet.BehaviorTransformer
-  obs_dim: ${encoder.output_dim}
+  obs_dim: ${eval_encoder.output_dim}
   act_dim: ${env.act_dim}
   goal_dim: ${env.goal_dim}
   vqvae_latent_dim: 512

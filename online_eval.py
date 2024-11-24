@@ -257,6 +257,7 @@ def main(cfg):
         for data in tqdm.tqdm(train_loader):
             optimizer.zero_grad()
             obs, act, goal = (x.to(cfg.device) for x in data)
+            print("GOAL SHAPE", goal.shape)
             obs = einops.rearrange(obs, "N T V E -> N T (V E)")
             goal = einops.rearrange(goal, "N T V E -> N T (V E)")
             predicted_act, loss, loss_dict = cbet_model(obs, goal, act)
