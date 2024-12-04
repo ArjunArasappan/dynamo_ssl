@@ -17,8 +17,8 @@ train:
   train_fraction: 0.95
   batch_size: 64
   num_workers: 15
-  window_size: 5
-  epochs: 500
+  window_size: 1
+  epochs: 100
 
 
   goal_conditional: null
@@ -27,11 +27,16 @@ train:
   num_extra_predicted_actions: 0
   timeout_seconds: 18000
 
+eval:
+  num_env_evals: 100
+  eval_window_size: 1
+  action_window_size: 1
+
 relative: False
 
 subset_fraction: 1
 seed: 42
-window_size: 5
+window_size: 1
 goal_window_size: 5
 eval_window_size: 5
 

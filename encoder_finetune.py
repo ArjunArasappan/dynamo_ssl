@@ -28,6 +28,8 @@ import torch.nn as nn
 
 import csv
 import warnings
+import glob
+
 
 
 
@@ -112,7 +114,17 @@ class Trainer():
         self.mrl_optimizer = optim.Adam(parameters)
 
             
-    def train(self):
+    def train(self, load = False):
+        
+        if load:
+            encoder_path = '/home/harsh/arjun/dynamo_ssl/mrl_enc_weights/mrl_enc_weights_v1.pt'
+            state_dict = torch.load(encoder_path)
+            self.encoder.load_state_dict(state_dict)
+            self.encoder = self.encoder.to(self.cfg.device)
+            
+            return
+        
+        
         self.criterion = nn.MSELoss()
         
         self.encoder.train()
@@ -131,11 +143,10 @@ class Trainer():
                 
                 
                 
-
                 optimizer.zero_grad()
                 
                 obs, act, _ = (x.to(self.cfg.device) for x in data)
-                print(obs.shape)
+
                 encoded_obs = self.encoder(obs)
 
                 obs = einops.rearrange(encoded_obs, "N T V E -> N T (V E)")
@@ -167,8 +178,10 @@ class Trainer():
             for size, policy_head in enumerate(self.mrl_policies):
                 total_loss = 0.0
                 num_batches = 0
+                
+                width = (self.mrl_min_size ** 2) * (2 ** size)
 
-                for data in tqdm.tqdm(self.test_loader, desc=f"Evaluating policy {size}"):
+                for data in tqdm.tqdm(self.test_loader, desc=f"Evaluating policy {width}"):
                     obs, act, _ = (x.to(self.cfg.device) for x in data)
 
                     encoded_obs = self.encoder(obs)
@@ -181,13 +194,137 @@ class Trainer():
 
                 average_loss = total_loss / num_batches
                 evaluation_losses.append(average_loss)
-                print(f"Policy {size}: Average Evaluation Loss = {average_loss}")
+                print(f"Policy {width}: Average Evaluation Loss = {average_loss}")
 
         for size, loss in enumerate(evaluation_losses):
             log_data([size, loss], 'eval')
 
 
         return evaluation_losses
+    
+    @torch.no_grad()
+    def eval_on_env(self, policy):
+        epoch = None
+        num_evals = self.cfg.eval.num_env_evals
+        num_eval_per_goal = 1
+        videorecorder = None
+        
+        
+        def goal_fn(goal_idx):
+            if "use_libero_goal" in self.cfg.data:
+                return goals_cache[goal_idx]
+            else:
+                return torch.zeros(1)
+        
+        self.env = hydra.utils.instantiate(self.cfg.env.gym)
+        
+        def embed(enc, obs):
+            obs = (
+                torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.cfg.device)
+            )  # 1 V C H W
+            result = enc(obs)
+            result = einops.rearrange(result, "1 V E -> (V E)")
+            return result
+
+        avg_reward = 0
+        action_list = []
+        completion_id_list = []
+        avg_max_coverage = []
+        avg_final_coverage = []
+        self.env.seed(self.cfg.seed)
+        for goal_idx in range(num_evals):
+            if videorecorder is not None:
+                videorecorder.init(enabled=True)
+            for i in range(num_eval_per_goal):
+                obs_stack = deque(maxlen=self.cfg.eval.eval_window_size)
+                this_obs = self.env.reset(goal_idx=goal_idx)  # V C H W
+                assert (
+                    this_obs.min() >= 0 and this_obs.max() <= 1
+                ), "expect 0-1 range observation"
+                this_obs_enc = embed(self.encoder, this_obs)
+                obs_stack.append(this_obs_enc)
+                done, step, total_reward = False, 0, 0
+                goal = goal_fn(goal_idx)  # V C H W
+                while not done:
+                    obs = torch.stack(tuple(obs_stack)).float().to(self.cfg.device)
+                    goal = torch.as_tensor(goal, dtype=torch.float32, device=self.cfg.device)
+                    # goal = embed(encoder, goal)
+                    goal = goal.unsqueeze(0).repeat(self.cfg.eval.eval_window_size, 1)
+                    action = policy(obs.unsqueeze(0))
+                    # print('action shape:', action.shape)
+                    action = action[0]  # remove batch dim; always 1
+                    # print('trim action shape:', action.shape)
+                    
+                    if self.cfg.action_window_size > 1:
+                        action_list.append(action[-1].cpu().detach().numpy())
+                        if len(action_list) > self.cfg.action_window_size:
+                            action_list = action_list[1:]
+                        curr_action = np.array(action_list)
+                        curr_action = (
+                            np.sum(curr_action, axis=0)[0] / curr_action.shape[0]
+                        )
+                        new_action_list = []
+                        for a_chunk in action_list:
+                            new_action_list.append(
+                                np.concatenate(
+                                    (a_chunk[1:], np.zeros((1)))
+                                )
+                            )
+                        action_list = new_action_list
+                    else:
+                        curr_action = action[-1, 0, :].cpu().detach().numpy()
+
+                    this_obs, reward, done, info = self.env.step(curr_action)
+                    this_obs_enc = embed(self.encoder, this_obs)
+                    obs_stack.append(this_obs_enc)
+
+                    if videorecorder and videorecorder.enabled:
+                        videorecorder.record(info["image"])
+                    step += 1
+                    total_reward += reward
+                    goal = goal_fn(goal_idx)
+                avg_reward += total_reward
+                if self.cfg.env.gym.id == "pusht":
+                    self.env.env._seed += 1
+                    avg_max_coverage.append(info["max_coverage"])
+                    avg_final_coverage.append(info["final_coverage"])
+                elif self.cfg.env.gym.id == "blockpush":
+                    avg_max_coverage.append(info["moved"])
+                    avg_final_coverage.append(info["entered"])
+                completion_id_list.append(info["all_completions_ids"])
+            if videorecorder:
+                videorecorder.save("eval_{}_{}.mp4".format(epoch, goal_idx))
+        return (
+            avg_reward / (num_evals * num_eval_per_goal),
+            completion_id_list,
+            avg_max_coverage,
+            avg_final_coverage,
+        )
+    
+    def save_encoder_weights(self, base_filename="mrl_enc_weights"):
+        
+        save_dir = "/home/harsh/arjun/dynamo_ssl/mrl_enc_weights"
+        
+        os.makedirs(save_dir, exist_ok=True)
+
+        existing_files = [f for f in os.listdir(save_dir) if f.startswith(base_filename) and f.endswith(".pt")]
+
+        version_numbers = []
+        for file in existing_files:
+            try:
+                version = int(file.split("_v")[-1].split(".pt")[0])
+                version_numbers.append(version)
+            except (IndexError, ValueError):
+                continue
+
+        next_version = max(version_numbers, default=0) + 1
+
+        save_filename = f"{base_filename}_v{next_version}.pt"
+        save_path = os.path.join(save_dir, save_filename)
+
+        # Save the encoder weights
+        torch.save(self.encoder.state_dict(), save_path)
+        print(f"Encoder weights saved to: {save_path}")
 
 
     def run(self):
@@ -209,10 +346,10 @@ class Trainer():
         
         subset_frac = self.cfg.subset_fraction
         
-        indices = list(range(int(len(self.train_set) * subset_frac)))
-        self.train_set = Subset(self.train_set, indices)
-        indices = list(range(int(len(self.test_set) * subset_frac)))
-        self.test_set = Subset(self.test_set, indices)
+        # indices = list(range(int(len(self.train_set) * subset_frac)))
+        # self.train_set = Subset(self.train_set, indices)
+        # indices = list(range(int(len(self.test_set) * subset_frac)))
+        # self.test_set = Subset(self.test_set, indices)
 
         self._setup_loaders(batch_size=self.cfg.train.batch_size)
         
@@ -229,9 +366,40 @@ class Trainer():
         
         # while True:
         #     pass
+
+        # for idx, policy in enumerate(self.mrl_policies):
+        #     size = (2 ** self.mrl_min_size) * (2 ** idx)
+            
+        #     online_data = self.eval_on_env(policy)
+        #     print(online_data)
+            
+        #     log_data(list(online_data), f'online policy eval: {size}')
         
-        self.train()
         self.evaluate()
+
+        for idx, policy in enumerate(self.mrl_policies):
+            size = (2 ** self.mrl_min_size) * (2 ** idx)
+            
+            online_data = self.eval_on_env(policy)
+            print(online_data)
+            
+            log_data(list(online_data), f'online policy eval: {size}')
+            
+        self.train()
+        
+        self.evaluate()
+        
+        policy_data = []
+        
+        for idx, policy in enumerate(self.mrl_policies):
+            size = (2 ** self.mrl_min_size) * (2 ** idx)
+            
+            online_data = self.eval_on_env(policy)
+            print(online_data)
+            
+            log_data(list(online_data), f'online policy eval: {size}')
+            
+        self.save_encoder_weights()
             
             
             
